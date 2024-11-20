@@ -70,7 +70,7 @@
 
 ------
 
-** 실행 시 
+## 실행 시 
 
 - pip install PyQt5
 - pip install opencv-python mediapipe numpy keyboard pillow PyQt5
