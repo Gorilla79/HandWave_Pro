@@ -68,8 +68,9 @@
 - 또한 스마트 글래스에 적용 해당 프로그램을 적용한다면 농인과의 양방향 소통을 크게 개선할 수 있을 것
 - 해당 프로젝트의 프로그램 측면에서 보았을 때 농인과의 의사소통 개선 뿐만아니라, 모션을 통한 IOT기기의 양방향 소통 및 제어, VR&XR에서의 활용 등 다양한 방면으로 활용이 가능할 것
 
+------
 
-** 실행 시 **
+** 실행 시 
 
 - pip install PyQt5
 - pip install opencv-python mediapipe numpy keyboard pillow PyQt5
