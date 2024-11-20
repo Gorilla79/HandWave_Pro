@@ -1,0 +1,155 @@
+import cv2
+import mediapipe as mp
+import numpy as np
+import keyboard
+import time
+from PIL import ImageFont, ImageDraw, Image
+from PyQt5.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
+from PyQt5.QtCore import Qt, QTimer
+
+# 손동작 인식 결과에 대한 한글 자모음 매핑입니다. 각 숫자에 해당하는 한글 자모음이 매핑되어 있습니다.
+gesture = {0: 'ㄱ', 1: 'ㄴ', 2: 'ㄷ', 3: 'ㄹ', 4: 'ㅁ', 5: 'ㅂ', 6: 'ㅅ', 7: 'ㅇ', 8: 'ㅈ', 9: 'ㅊ', 10: 'ㅋ', 11: 'ㅌ', 12: 'ㅍ', 13: 'ㅎ',
+           14: 'ㅏ', 15: 'ㅑ', 16: 'ㅓ', 17: 'ㅕ', 18: 'ㅗ', 19: 'ㅛ', 20: 'ㅜ', 21: 'ㅠ', 22: 'ㅡ', 23: 'ㅣ', 24: 'ㅐ', 25: 'ㅒ',
+           26: 'ㅔ', 27: 'ㅖ', 28: 'ㅢ', 29: 'ㅚ', 30: 'ㅟ', 31: 'S'}
+
+# Mediapipe를 사용하여 손 인식 모델과 관련된 클래스와 함수를 사용할 수 있습니다. [초기화]
+mp_hands = mp.solutions.hands
+mp_drawing = mp.solutions.drawing_utils
+hands = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.5, min_tracking_confidence=0.5)
+
+# 훈련된 손동작 데이터를 불러와 KNN 알고리즘을 사용하여 손동작을 분류합니다.
+file = np.genfromtxt('hangle.txt', delimiter=',')
+angleFile = file[:, :-1].reshape(-1, file.shape[1] - 1)
+labelFile = file[:, -1]
+angle = angleFile.astype(np.float32)
+label = labelFile.astype(np.float32)
+knn = cv2.ml.KNearest_create()
+knn.train(angle, cv2.ml.ROW_SAMPLE, label)
+
+# 한글 폰트 설정
+font_path = 'mugunghwa.ttf'
+font_size = 1.5
+font_color = (255, 255, 255)
+
+# 한글 폰트 로드
+font_korean = ImageFont.truetype(font_path, int(font_size * 60))
+
+cap = cv2.VideoCapture(0)
+
+# 프로그램 시작 시간, 이전 손동작 인덱스, 입력된 문장 및 손동작 인식 지연 시간을 저장하는 변수를 초기화합니다.
+startTime = time.time()
+prev_index = 0
+sentence = ''
+recognizeDelay = 1
+
+
+# 파일 핸들 변수를 전역 범위로 설정
+f = open('test.txt', 'w')
+
+# GUI 생성
+app = QApplication([])
+window = QWidget()
+window.setWindowTitle("Hand Gesture Recognition")
+layout = QVBoxLayout()
+label = QLabel("[손동작 결과]")
+layout.addWidget(label)
+window.setLayout(layout)
+window.show()
+
+# 한글 결과 출력 함수
+def update_gui(result_text):
+    label.setText("[손동작 결과]\n" + result_text.replace(' ', '\n'))  # 띄어쓰기를 줄바꿈으로 변환하여 출력
+
+def recognize_gesture():
+    global sentence, startTime, prev_index, f 
+
+    ret, img = cap.read()
+    image_pil = Image.fromarray(img)
+    draw = ImageDraw.Draw(image_pil)
+
+    if not ret:
+        return
+
+    imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    result = hands.process(imgRGB)
+
+    if result.multi_hand_landmarks is not None:
+        for res in result.multi_hand_landmarks:
+            joint = np.zeros((21, 3))
+            for j, lm in enumerate(res.landmark):
+                joint[j] = [lm.x, lm.y, lm.z]
+
+            v1 = joint[[0, 1, 2, 3, 0, 5, 6, 7, 0, 9, 10, 11, 0, 13, 14, 15, 0, 17, 18, 19], :]
+            v2 = joint[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20], :]
+
+            v = v2 - v1
+            v = v / np.linalg.norm(v, axis=1)[:, np.newaxis]
+
+            compareV1 = v[[0, 1, 2, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 16, 17], :]
+            compareV2 = v[[1, 2, 3, 5, 6, 7, 9, 10, 11, 13, 14, 15, 17, 18, 19], :]
+            angle = np.arccos(np.einsum('nt,nt->n', compareV1, compareV2))
+            angle = np.degrees(angle)
+
+            if keyboard.is_pressed('a'):
+                for num in angle:
+                    num = round(num, 6)
+                    f.write(str(num))
+                    f.write(',')
+                f.write("31.000000")
+                f.write('\n')
+                print("next")
+
+            data = np.array([angle], dtype=np.float32)
+            ret, results, neighbors, dist = knn.findNearest(data, 3)
+            index = int(results[0][0])
+
+            if index in gesture.keys():
+                if index != prev_index:
+                    startTime = time.time()
+                    prev_index = index
+                else:
+                    if time.time() - startTime > recognizeDelay:
+                        if index == 31:
+                            sentence += ' '
+                        else:
+                            sentence += gesture[index]
+                            
+                        startTime = time.time()
+
+            text_origin = (int(res.landmark[0].x * img.shape[1] - 10), int(res.landmark[0].y * img.shape[0] + 40))
+            for i, char in enumerate(gesture[index]):
+                char_bbox = draw.textbbox(text_origin, char, font=font_korean)
+                char_x, char_y = char_bbox[:2]
+                char_origin = (char_x, char_y)
+                draw.text(char_origin, char, font=font_korean, fill=font_color)
+
+                draw.text((20,380), sentence, fill=font_color, font=font_korean)
+                img = np.array(image_pil)
+
+            result_text = sentence
+            update_gui(result_text)
+            img = np.array(image_pil)
+            mp_drawing.draw_landmarks(img, res, mp_hands.HAND_CONNECTIONS)
+
+    else:
+        if sentence:
+            draw.text((20,380), sentence, fill=font_color, font=font_korean)
+            result_text = sentence
+            update_gui(result_text)
+            img = np.array(image_pil)
+
+    cv2.imshow('HandTracking', img)
+
+# 타이머 설정
+timer = QTimer()
+timer.timeout.connect(recognize_gesture)
+timer.start(1)  # 1ms 간격으로 타이머 작동
+
+app.exec_()
+
+# 프로그램 종료 시 파일 핸들 닫기
+if f is not None:
+    f.close()
+
+cap.release()
+cv2.destroyAllWindows()
