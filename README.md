@@ -1,4 +1,5 @@
 # HandWave_Pro
+![image](https://github.com/user-attachments/assets/d1bc6634-9e8b-4966-97b2-b5f43dbf08ef)
 
 ## 프로젝트 배경
 
